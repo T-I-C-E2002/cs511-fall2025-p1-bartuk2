@@ -1,11 +1,13 @@
 #!/bin/bash
 
+
 function test_spark_q1() {
     docker compose -f cs511p1-compose.yaml cp resources/active_executors.scala \
         main:/active_executors.scala
     docker compose -f cs511p1-compose.yaml exec main bash -x -c '\
         cat /active_executors.scala | spark-shell --master spark://main:7077'
 }
+
 
 function test_spark_q2() {
     docker compose -f cs511p1-compose.yaml cp resources/pi.scala main:/pi.scala
