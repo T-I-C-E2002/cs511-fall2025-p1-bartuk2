@@ -8,6 +8,8 @@ services:
       ports:
         - 8080:8080
         - 8081:8081
+        - 9000:9000
+        - 7077:7077
       command: ["/bin/bash", "start-main.sh"]
    worker1:
       image: cs511p1-worker
