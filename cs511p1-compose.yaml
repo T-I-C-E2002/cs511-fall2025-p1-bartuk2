@@ -30,3 +30,8 @@ services:
       command: ["/bin/bash", "start-worker.sh"]
       volumes:
         - dn2:/data/hdfs/datanode
+volumes:
+  nn:
+  dn-main:
+  dn1:
+  dn2:
