@@ -20,7 +20,8 @@ ssh-copy-id -i ~/.ssh/id_rsa -o 'IdentityFile ~/.ssh/shared_rsa' -o StrictHostKe
 ####################################################################################
 
 # Start HDFS/Spark main here
-if [ ! -d /data/hdfs/namenode/current ]; then
+
+if [ ! -f /data/hdfs/namenode/current/VERSION ]; then
   ${HADOOP_HOME}/bin/hdfs namenode -format -force -nonInteractive
 fi
 
@@ -32,5 +33,6 @@ export SPARK_MASTER_PORT=7077
 export SPARK_MASTER_WEBUI_PORT=8080
 
 ${SPARK_HOME}/sbin/start-master.sh
+${SPARK_HOME}/sbin/start-worker.sh spark://main:7077
 
 tail -f /dev/null

@@ -11,15 +11,22 @@ services:
         - 9000:9000
         - 7077:7077
       command: ["/bin/bash", "start-main.sh"]
+      volumes:
+        - nn:/data/hdfs/namenode
+        - dn-main:/data/hdfs/datanode
    worker1:
       image: cs511p1-worker
       hostname: worker1
       tty: true
       stdin_open: true
       command: ["/bin/bash", "start-worker.sh"]
+      volumes:
+        - dn1:/data/hdfs/datanode
    worker2:
       image: cs511p1-worker
       hostname: worker2
       tty: true
       stdin_open: true
       command: ["/bin/bash", "start-worker.sh"]
+      volumes:
+        - dn2:/data/hdfs/datanode
