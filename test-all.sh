@@ -79,7 +79,17 @@ function test_spark_q4() {
 function test_terasorting() {
     # call your program here
     # make sure your program outputs only the result on screen
-    echo "please rewrite this function";
+    docker compose -f cs511p1-compose.yaml cp resources/sorting.scala main:/sorting.scala
+    docker compose -f cs511p1-compose.yaml cp resources/sample.csv  main:/sample.csv
+
+    
+    docker compose -f cs511p1-compose.yaml exec -T main bash -lc '
+        hdfs dfs -rm -f /datasets/terasort/samplecap.csv >/dev/null 2>&1 || true
+        hdfs dfs -mkdir -p /datasets/terasort >/dev/null 2>&1
+        hdfs dfs -put -f /sample.csv /datasets/terasort/samplecap.csv >/dev/null 2>&1
+        cat /sorting.scala | spark-shell --master spark://main:7077 -i /sorting.scala 2>/dev/null | grep -Eo "^[0-9]{4},[0-9-]+$"
+    '
+    
 }
 
 function test_pagerank() {
@@ -172,7 +182,7 @@ else
 fi
 
 echo -n "Testing Tera Sorting ..."
-test_terasorting > out/test_terasorting.out 2>&1
+test_terasorting > out/test_terasorting.out
 if diff --strip-trailing-cr resources/example-terasorting.truth out/test_terasorting.out; then
     echo -e " ${GREEN}PASS${NC}"
     (( total_score+=20 ));
