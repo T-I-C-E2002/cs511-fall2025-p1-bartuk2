@@ -95,7 +95,16 @@ function test_terasorting() {
 function test_pagerank() {
     # extra credit
     # make sure your program outputs only the result on screen
-    echo "please rewrite this function";
+    docker compose -f cs511p1-compose.yaml cp resources/pagerank.scala main:/pagerank.scala 
+    docker compose -f cs511p1-compose.yaml cp resources/pageranksample.csv  main:/pageranksample.csv 
+
+    
+    docker compose -f cs511p1-compose.yaml exec -T main bash -lc '
+        hdfs dfs -rm -f /datasets/terasort/pageranksap.csv >/dev/null 2>&1 || true
+        hdfs dfs -mkdir -p /datasets/terasort >/dev/null 2>&1
+        hdfs dfs -put -f /pageranksample.csv /datasets/terasort/pageranksap.csv >/dev/null 2>&1
+        cat /pagerank.scala | spark-shell --master spark://main:7077 -i /pagerank.scala 2>/dev/null | grep -Eo "^[0-9]+,[0-9]+\.[0-9]+$"
+    '
 }
 
 GREEN='\033[0;32m'
@@ -191,7 +200,7 @@ else
 fi
 
 echo -n "Testing PageRank (extra credit) ..."
-test_pagerank > out/test_pagerank.out 2>&1
+test_pagerank > out/test_pagerank.out
 if diff --strip-trailing-cr resources/example-pagerank.truth out/test_pagerank.out; then
     echo -e " ${GREEN}PASS${NC}"
     (( total_score+=20 ));
