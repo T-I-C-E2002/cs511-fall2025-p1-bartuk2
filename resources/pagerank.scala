@@ -1,70 +1,110 @@
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.functions._
+//import org.apache.spark.sql.functions._
 import org.apache.spark.rdd.RDD
+import scala.math.BigDecimal.RoundingMode
+
 
 val spark = SparkSession.builder().appName("SimplePageRank").master("spark://main:7077").getOrCreate()
 val sc = spark.sparkContext
 sc.setLogLevel("ERROR")
 
-val inputPath = "hdfs://main:9000/datasets/terasort/pageranksap.csv"
-
-// Read CSV, skip header, parse edges
+val inputPath = "/datasets/terasort/pageranksap.csv"
 val lines = sc.textFile(inputPath)
-val edges = lines
-  .filter(line => !line.trim.toLowerCase.startsWith("node"))
-  .map(_.split(","))
-  .map(arr => (arr(0).trim, arr(1).trim))
 
-for line in lines.take(5) do println(line)
-
-// Build adjacency and helpers
-val links      = edges.groupByKey().mapValues(_.toArray).cache()   // (src, Array[dst])
-val outNodes   = links.keys.cache()
-val dangling   = allNodes.subtract(outNodes).cache()               // nodes with no outlinks
-val bcDangling = sc.broadcast(dangling.collect().toSet)
-
-val d  = 0.85
-val tp = (1.0 - d) / N.toDouble
-val eps = 1e-4
-val maxIter = 100
-
-var ranks = allNodes.map(n => (n, 1.0 / N)).cache()
-var iter = 0
-var converged = false
-
-while (!converged && iter < maxIter) {
-  // contributions from non-dangling nodes
-  val contribs = links.join(ranks).flatMap { case (src, (outs, r)) =>
-    val L = outs.length
-    outs.iterator.map(dst => (dst, r / L))
+val edges: RDD[(String, String)] = lines
+  .flatMap { line =>
+    val trimmed = line.trim
+    if (trimmed.isEmpty || trimmed.toLowerCase.startsWith("node")) {
+      Iterator.empty
+    } else {
+      val parts = trimmed.split(",").map(_.trim)
+      parts match {
+        case Array(src, dst) if src.nonEmpty && dst.nonEmpty => Iterator.single((src, dst))
+        case _ => Iterator.empty
+      }
+    }
   }
+  .cache()
 
-  // mass from dangling nodes
-  val danglingMass = ranks.filter { case (n, _) => bcDangling.value(n) }
-                          .values.sum()
+val nodes = edges
+  .flatMap { case (src, dst) => Iterator(src, dst) }
+  .distinct()
+  .cache()
 
-  // sum inbound contributions for EVERY node (ensure nodes with no inbound get 0)
-  val summed = allNodes.map(n => (n, 0.0)).union(contribs).reduceByKey(_ + _)
+val nodeCount = nodes.count().toDouble
 
-  // teleport + damping + redistributed dangling mass
-  val newRanks = summed.mapValues(c => tp + d * (c + danglingMass / N)).cache()
+val groupedEdges = edges
+  .groupByKey()
+  .mapValues(_.toArray)
 
-  // L1 diff for convergence
-  val diff = ranks.join(newRanks).values.map { case (a, b) => math.abs(a - b) }.sum()
-  converged = diff < eps
+val links = nodes
+  .map(node => (node, Array.empty[String]))
+  .leftOuterJoin(groupedEdges)
+  .mapValues { case (_, outsOpt) => outsOpt.getOrElse(Array.empty[String]) }
+  .cache()
 
-  ranks.unpersist(false)
+  val danglingNodes = links
+  .filter { case (_, outs) => outs.isEmpty }
+  .keys
+  .collect()
+  .toSet
+
+val bcDangling = sc.broadcast(danglingNodes)
+
+val damping = 0.85
+val teleport = (1.0 - damping) / nodeCount
+val tolerance = 1e-8
+val maxIterations = 100
+
+var ranks = nodes.map(node => (node, 1.0 / nodeCount)).cache()
+var iteration = 0
+var delta = Double.PositiveInfinity
+
+while (iteration < maxIterations && delta > tolerance) {
+  val danglingMass = ranks
+    .filter { case (node, _) => bcDangling.value.contains(node) }
+    .values
+    .sum()
+
+  val contributions = links
+    .join(ranks)
+    .flatMap { case (_, (outs, rank)) =>
+      if (outs.isEmpty) Iterator.empty
+      else outs.iterator.map(dst => (dst, rank / outs.length))
+    }
+
+  val incoming = nodes
+    .map(node => (node, 0.0))
+    .union(contributions)
+    .reduceByKey(_ + _)
+
+  val danglingShare = if (bcDangling.value.nonEmpty) danglingMass / nodeCount else 0.0
+
+  val newRanks = incoming
+    .mapValues(sum => teleport + damping * (sum + danglingShare))
+    .cache()
+
+  delta = ranks
+    .join(newRanks)
+    .values
+    .map { case (oldRank, newRank) => math.abs(oldRank - newRank) }
+    .sum()
+
+  ranks.unpersist(blocking = false)
   ranks = newRanks
-  iter += 1
+  iteration += 1
 }
 
 val output = ranks
-  .map{case (node, rank) => (node.toInt, BigDecimal(rank).setScale(3, BigDecimal.RoundingMode.HALF_UP).toDouble)}
-  .sortBy({case (node, rank) => (-rank, node)})
+    .map { case (node, rank) =>
+    val rounded = BigDecimal(rank).setScale(3, RoundingMode.HALF_UP).toDouble
+    (node.toInt, rounded)
+  }
+  .sortBy({ case (node, rank) => (-rank, node) })
   .collect()
 
-output.foreach{ case (node, rank) =>
-  println(f"$node,${rank}%.3f")
+output.foreach { case (node, rank) =>
+  println(f"$node,$rank%.3f")
 }
 
 spark.stop()

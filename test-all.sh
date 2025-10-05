@@ -103,7 +103,7 @@ function test_pagerank() {
         hdfs dfs -rm -f /datasets/terasort/pageranksap.csv >/dev/null 2>&1 || true
         hdfs dfs -mkdir -p /datasets/terasort >/dev/null 2>&1
         hdfs dfs -put -f /pageranksample.csv /datasets/terasort/pageranksap.csv >/dev/null 2>&1
-        cat /pagerank.scala | spark-shell --master spark://main:7077 -i /pagerank.scala 2>/dev/null | grep -Eo "^[0-9]+,[0-9]+\.[0-9]+$"
+        cat /pagerank.scala | spark-shell --master spark://main:7077 -i /pagerank.scala 2>/dev/null | grep -E "^[0-9]+,[0-9]+\.[0-9]{3}$"
     '
 }
 
